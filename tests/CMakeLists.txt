@@ -38,6 +38,7 @@ set(FAISS_TEST_SRC
   test_callback.cpp
   test_utils.cpp
   test_hamming.cpp
+  test_ivfpq_share_table.cpp
 )
 
 add_executable(faiss_test ${FAISS_TEST_SRC})
