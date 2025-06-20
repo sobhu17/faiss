@@ -400,7 +400,7 @@ void write_index(const Index* idx, IOWriter* f, int io_flags) {
                                                                  : "IxFl");
         WRITE1(h);
         write_index_header(idx, f);
-        WRITEXBVECTOR(idxf->codes);
+//        WRITEXBVECTOR(idxf->codes);
     } else if (const IndexLSH* idxl = dynamic_cast<const IndexLSH*>(idx)) {
         uint32_t h = fourcc("IxHe");
         WRITE1(h);

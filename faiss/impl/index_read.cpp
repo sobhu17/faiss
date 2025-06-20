@@ -545,7 +545,19 @@ Index* read_index(IOReader* f, int io_flags) {
         }
         read_index_header(idxf, f);
         idxf->code_size = idxf->d * sizeof(float);
-        READXBVECTOR(idxf->codes);
+        idxf->codes.resize(idxf->ntotal * idxf->code_size);
+
+        if (!idxf->codes.empty()) {
+            float* dataPtr = reinterpret_cast<float*>(idxf->codes.data());
+            size_t dim = idxf->d;
+            for (size_t i = 0; i < idxf->ntotal; i++) {
+                if (!f->copy(dataPtr + i * dim, dim * sizeof(float))) {
+                    throw std::runtime_error("Failed to load flat vectors via IOReader::copy at index " + std::to_string(i));
+                }
+            }
+        }
+
+//        READXBVECTOR(idxf->codes);
         FAISS_THROW_IF_NOT(
                 idxf->codes.size() == idxf->ntotal * idxf->code_size);
         // leak!
