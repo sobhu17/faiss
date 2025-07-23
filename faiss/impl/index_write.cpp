@@ -408,7 +408,7 @@ void write_index(const Index* idx, IOWriter* f, int io_flags) {
                                                                  : "IxFl");
         WRITE1(h);
         write_index_header(idx, f);
-        WRITEXBVECTOR(idxf->codes);
+//        WRITEXBVECTOR(idxf->codes);
     } else if (const IndexLSH* idxl = dynamic_cast<const IndexLSH*>(idx)) {
         uint32_t h = fourcc("IxHe");
         WRITE1(h);
@@ -608,7 +608,7 @@ void write_index(const Index* idx, IOWriter* f, int io_flags) {
         WRITE1(h);
         write_index_header(idx, f);
         write_ScalarQuantizer(&idxs->sq, f);
-        WRITEVECTOR(idxs->codes);
+//        WRITEVECTOR(idxs->codes);
     } else if (
             const IndexLattice* idxl_2 =
                     dynamic_cast<const IndexLattice*>(idx)) {

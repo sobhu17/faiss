@@ -682,7 +682,7 @@ Index* read_index(IOReader* f, int io_flags) {
         // denotes a missing index, useful for some cases
         return nullptr;
     } else if (
-            h == fourcc("IxFI") || h == fourcc("IxF2") || h == fourcc("IxFl")) {
+        h == fourcc("IxFI") || h == fourcc("IxF2") || h == fourcc("IxFl")) {
         IndexFlat* idxf;
         if (h == fourcc("IxFI")) {
             idxf = new IndexFlatIP();
@@ -693,9 +693,20 @@ Index* read_index(IOReader* f, int io_flags) {
         }
         read_index_header(idxf, f);
         idxf->code_size = idxf->d * sizeof(float);
-        read_xb_vector(idxf->codes, f);
+        idxf->codes.resize(idxf->ntotal * idxf->code_size);
+
+        if (!idxf->codes.empty()) {
+            float* dataPtr = reinterpret_cast<float*>(idxf->codes.data());
+            size_t dim = idxf->d;
+            for (size_t i = 0; i < idxf->ntotal; i++) {
+                if (!f->copy(dataPtr + i * dim, dim * sizeof(float))) {
+                    throw std::runtime_error("Failed to load flat vectors via IOReader::copy at index " + std::to_string(i));
+                }
+            }
+        }
+
         FAISS_THROW_IF_NOT(
-                idxf->codes.size() == idxf->ntotal * idxf->code_size);
+        idxf->codes.size() == idxf->ntotal * idxf->code_size);
         // leak!
         idx = idxf;
     } else if (h == fourcc("IxHE") || h == fourcc("IxHe")) {
@@ -937,8 +948,30 @@ Index* read_index(IOReader* f, int io_flags) {
         IndexScalarQuantizer* idxs = new IndexScalarQuantizer();
         read_index_header(idxs, f);
         read_ScalarQuantizer(&idxs->sq, f);
-        read_vector(idxs->codes, f);
         idxs->code_size = idxs->sq.code_size;
+        idxs->codes.resize(idxs->ntotal * idxs->code_size);
+
+        size_t dim = idxs->d;
+        std::vector<float> floatBuffer(dim);
+
+        if (!idxs->codes.empty()){
+            for (size_t i = 0; i < idxs->ntotal; i++) {
+                // Now this gives you float[] from typecasted byte[]
+                if (!f->copy(floatBuffer.data(), sizeof(float) * dim)) {
+                    throw std::runtime_error("Failed to convert byte[] to float[] at index " + std::to_string(i));
+                }
+
+                uint8_t* destCode = idxs->codes.data() + i * idxs->code_size;
+
+                idxs->sq.compute_codes(
+                    floatBuffer.data(),
+                    idxs->codes.data() + i * idxs->code_size,
+                    1
+                );
+            }
+        }
+
+        FAISS_THROW_IF_NOT(idxs->codes.size() == idxs->ntotal * idxs->code_size);
         idx = idxs;
     } else if (h == fourcc("IxLa")) {
         int d, nsq, scale_nbit, r2;
