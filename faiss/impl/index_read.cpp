@@ -545,7 +545,18 @@ Index* read_index(IOReader* f, int io_flags) {
         }
         read_index_header(idxf, f);
         idxf->code_size = idxf->d * sizeof(float);
-        READXBVECTOR(idxf->codes);
+        idxf->codes.resize(idxf->ntotal * idxf->code_size);
+
+        if (!idxf->codes.empty()) {
+            float* dataPtr = reinterpret_cast<float*>(idxf->codes.data());
+            size_t dim = idxf->d;
+            for (size_t i = 0; i < idxf->ntotal; i++) {
+                if (!f->copy(dataPtr + i * dim, dim * sizeof(float))) {
+                    throw std::runtime_error("Failed to load flat vectors via IOReader::copy at index " + std::to_string(i));
+                }
+            }
+        }
+
         FAISS_THROW_IF_NOT(
                 idxf->codes.size() == idxf->ntotal * idxf->code_size);
         // leak!
@@ -789,8 +800,28 @@ Index* read_index(IOReader* f, int io_flags) {
         IndexScalarQuantizer* idxs = new IndexScalarQuantizer();
         read_index_header(idxs, f);
         read_ScalarQuantizer(&idxs->sq, f);
-        READVECTOR(idxs->codes);
+
         idxs->code_size = idxs->sq.code_size;
+        idxs->codes.resize(idxs->ntotal * idxs->code_size);
+
+        size_t dim = idxs->d;
+        std::vector<float> floatBuffer(dim);
+
+        if (!idxs->codes.empty()){
+            for (size_t i = 0; i < idxs->ntotal; i++) {
+                if (!f->copy(floatBuffer.data(), sizeof(float) * dim)) {
+                    throw std::runtime_error("Failed to convert byte[] to float[] at index " + std::to_string(i));
+                }
+
+                idxs->sq.compute_codes(
+                    floatBuffer.data(),
+                    idxs->codes.data() + i * idxs->code_size,
+                    1
+                );
+            }
+        }
+
+        FAISS_THROW_IF_NOT(idxs->codes.size() == idxs->ntotal * idxs->code_size);
         idx = idxs;
     } else if (h == fourcc("IxLa")) {
         int d, nsq, scale_nbit, r2;
