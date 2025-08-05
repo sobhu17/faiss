@@ -77,17 +77,17 @@ namespace faiss {
 /*************************************************************
  * Write
  **************************************************************/
-static void write_index_header(const Index* idx, IOWriter* f) {
-    WRITE1(idx->d);
-    WRITE1(idx->ntotal);
-    idx_t dummy = 1 << 20;
-    WRITE1(dummy);
-    WRITE1(dummy);
-    WRITE1(idx->is_trained);
-    WRITE1(idx->metric_type);
-    if (idx->metric_type > 1) {
-        WRITE1(idx->metric_arg);
-    }
+static void write_index_header(const Index* idx, IOWriter* f, const bool dedup_vector_enabled=false) {
+      WRITE1(idx->d);
+      WRITE1(idx->ntotal);
+      idx_t dummy = dedup_vector_enabled ? 0xFFFFFFF : 1 << 20;
+      WRITE1(dummy);
+      WRITE1(dummy);
+      WRITE1(idx->is_trained);
+      WRITE1(idx->metric_type);
+      if (idx->metric_type > 1) {
+          WRITE1(idx->metric_arg);
+      }
 }
 
 void write_VectorTransform(const VectorTransform* vt, IOWriter* f) {
@@ -387,17 +387,18 @@ static void write_direct_map(const DirectMap* dm, IOWriter* f) {
     }
 }
 
-static void write_ivf_header(const IndexIVF* ivf, IOWriter* f) {
-    write_index_header(ivf, f);
+static void write_ivf_header(const IndexIVF* ivf, IOWriter* f, uint64_t io_flags) {
+    write_index_header(ivf, f, !(io_flags & DEDUPE_VECTORS_OPT_DISABLED));
     WRITE1(ivf->nlist);
     WRITE1(ivf->nprobe);
     // subclasses write by_residual (some of them support only one setting of
     // by_residual).
-    write_index(ivf->quantizer, f);
+    write_index(ivf->quantizer, f, io_flags);
     write_direct_map(&ivf->direct_map, f);
 }
 
-void write_index(const Index* idx, IOWriter* f, int io_flags) {
+void write_index(const Index* idx, IOWriter* f, uint64_t io_flags) {
+    const bool dedup_vector_enabled = !(io_flags & DEDUPE_VECTORS_OPT_DISABLED);
     if (idx == nullptr) {
         // eg. for a storage component of HNSW that is set to nullptr
         uint32_t h = fourcc("null");
@@ -408,12 +409,15 @@ void write_index(const Index* idx, IOWriter* f, int io_flags) {
                                : idxf->metric_type == METRIC_L2  ? "IxF2"
                                                                  : "IxFl");
         WRITE1(h);
-        write_index_header(idx, f);
-        WRITEXBVECTOR(idxf->codes);
+        write_index_header(idx, f, dedup_vector_enabled);
+
+        if(!dedup_vector_enabled){
+            WRITEXBVECTOR(idxf->codes);
+        }
     } else if (const IndexLSH* idxl = dynamic_cast<const IndexLSH*>(idx)) {
         uint32_t h = fourcc("IxHe");
         WRITE1(h);
-        write_index_header(idx, f);
+        write_index_header(idx, f, dedup_vector_enabled);
         WRITE1(idxl->nbits);
         WRITE1(idxl->rotate_data);
         WRITE1(idxl->train_thresholds);
@@ -425,7 +429,7 @@ void write_index(const Index* idx, IOWriter* f, int io_flags) {
     } else if (const IndexPQ* idxp = dynamic_cast<const IndexPQ*>(idx)) {
         uint32_t h = fourcc("IxPq");
         WRITE1(h);
-        write_index_header(idx, f);
+        write_index_header(idx, f, dedup_vector_enabled);
         write_ProductQuantizer(&idxp->pq, f);
         WRITEVECTOR(idxp->codes);
         // search params -- maybe not useful to store?
@@ -437,7 +441,7 @@ void write_index(const Index* idx, IOWriter* f, int io_flags) {
                     dynamic_cast<const IndexResidualQuantizer*>(idx)) {
         uint32_t h = fourcc("IxRq");
         WRITE1(h);
-        write_index_header(idx, f);
+        write_index_header(idx, f, dedup_vector_enabled);
         write_ResidualQuantizer(&idxr->rq, f);
         WRITE1(idxr->code_size);
         WRITEVECTOR(idxr->codes);
@@ -446,7 +450,7 @@ void write_index(const Index* idx, IOWriter* f, int io_flags) {
                     dynamic_cast<const IndexLocalSearchQuantizer*>(idx)) {
         uint32_t h = fourcc("IxLS");
         WRITE1(h);
-        write_index_header(idx, f);
+        write_index_header(idx, f, dedup_vector_enabled);
         write_LocalSearchQuantizer(&idxr_2->lsq, f);
         WRITE1(idxr_2->code_size);
         WRITEVECTOR(idxr_2->codes);
@@ -465,7 +469,7 @@ void write_index(const Index* idx, IOWriter* f, int io_flags) {
                             idx)) {
         uint32_t h = fourcc("IxPL");
         WRITE1(h);
-        write_index_header(idx, f);
+        write_index_header(idx, f, dedup_vector_enabled);
         write_ProductLocalSearchQuantizer(&idxpl->plsq, f);
         WRITE1(idxpl->code_size);
         WRITEVECTOR(idxpl->codes);
@@ -496,7 +500,7 @@ void write_index(const Index* idx, IOWriter* f, int io_flags) {
             WRITE1(h);
         }
 
-        write_index_header(idxaqfs, f);
+        write_index_header(idxaqfs, f, dedup_vector_enabled);
 
         if (idxlsqfs) {
             write_LocalSearchQuantizer(&idxlsqfs->lsq, f);
@@ -552,7 +556,7 @@ void write_index(const Index* idx, IOWriter* f, int io_flags) {
             WRITE1(h);
         }
 
-        write_ivf_header(ivaqfs, f);
+        write_ivf_header(ivaqfs, f, dedup_vector_enabled);
 
         if (ivlsqfs) {
             write_LocalSearchQuantizer(&ivlsqfs->lsq, f);
@@ -586,15 +590,15 @@ void write_index(const Index* idx, IOWriter* f, int io_flags) {
                     dynamic_cast<const ResidualCoarseQuantizer*>(idx)) {
         uint32_t h = fourcc("ImRQ");
         WRITE1(h);
-        write_index_header(idx, f);
+        write_index_header(idx, f, dedup_vector_enabled);
         write_ResidualQuantizer(&idxr_2->rq, f);
         WRITE1(idxr_2->beam_factor);
     } else if (
             const Index2Layer* idxp_2 = dynamic_cast<const Index2Layer*>(idx)) {
         uint32_t h = fourcc("Ix2L");
         WRITE1(h);
-        write_index_header(idx, f);
-        write_index(idxp_2->q1.quantizer, f);
+        write_index_header(idx, f, dedup_vector_enabled);
+        write_index(idxp_2->q1.quantizer, f, io_flags);
         WRITE1(idxp_2->q1.nlist);
         WRITE1(idxp_2->q1.quantizer_trains_alone);
         write_ProductQuantizer(&idxp_2->pq, f);
@@ -607,9 +611,16 @@ void write_index(const Index* idx, IOWriter* f, int io_flags) {
                     dynamic_cast<const IndexScalarQuantizer*>(idx)) {
         uint32_t h = fourcc("IxSQ");
         WRITE1(h);
-        write_index_header(idx, f);
+        if ((idxs->sq.qtype == 4)) {
+            write_index_header(idx, f, false);
+        }
+        else{
+            write_index_header(idx, f, dedup_vector_enabled);
+        }
         write_ScalarQuantizer(&idxs->sq, f);
-        WRITEVECTOR(idxs->codes);
+        if((!dedup_vector_enabled) || (idxs->sq.qtype == 4)){
+            WRITEVECTOR(idxs->codes);
+        }
     } else if (
             const IndexLattice* idxl_2 =
                     dynamic_cast<const IndexLattice*>(idx)) {
@@ -619,14 +630,14 @@ void write_index(const Index* idx, IOWriter* f, int io_flags) {
         WRITE1(idxl_2->nsq);
         WRITE1(idxl_2->scale_nbit);
         WRITE1(idxl_2->zn_sphere_codec.r2);
-        write_index_header(idx, f);
+        write_index_header(idx, f, dedup_vector_enabled);
         WRITEVECTOR(idxl_2->trained);
     } else if (
             const IndexIVFFlatDedup* ivfl =
                     dynamic_cast<const IndexIVFFlatDedup*>(idx)) {
         uint32_t h = fourcc("IwFd");
         WRITE1(h);
-        write_ivf_header(ivfl, f);
+        write_ivf_header(ivfl, f, io_flags);
         {
             std::vector<idx_t> tab(2 * ivfl->instances.size());
             long i = 0;
@@ -643,14 +654,14 @@ void write_index(const Index* idx, IOWriter* f, int io_flags) {
                     dynamic_cast<const IndexIVFFlat*>(idx)) {
         uint32_t h = fourcc("IwFl");
         WRITE1(h);
-        write_ivf_header(ivfl_2, f);
+        write_ivf_header(ivfl_2, f, io_flags);
         write_InvertedLists(ivfl_2->invlists, f);
     } else if (
             const IndexIVFScalarQuantizer* ivsc =
                     dynamic_cast<const IndexIVFScalarQuantizer*>(idx)) {
         uint32_t h = fourcc("IwSq");
         WRITE1(h);
-        write_ivf_header(ivsc, f);
+        write_ivf_header(ivsc, f, io_flags);
         write_ScalarQuantizer(&ivsc->sq, f);
         WRITE1(ivsc->code_size);
         WRITE1(ivsc->by_residual);
@@ -672,7 +683,7 @@ void write_index(const Index* idx, IOWriter* f, int io_flags) {
         }
 
         WRITE1(h);
-        write_ivf_header(iva, f);
+        write_ivf_header(iva, f, io_flags);
         WRITE1(iva->code_size);
         if (is_LSQ) {
             write_LocalSearchQuantizer((LocalSearchQuantizer*)iva->aq, f);
@@ -693,7 +704,7 @@ void write_index(const Index* idx, IOWriter* f, int io_flags) {
                     dynamic_cast<const IndexIVFSpectralHash*>(idx)) {
         uint32_t h = fourcc("IwSh");
         WRITE1(h);
-        write_ivf_header(ivsp, f);
+        write_ivf_header(ivsp, f, io_flags);
         write_VectorTransform(ivsp->vt, f);
         WRITE1(ivsp->nbit);
         WRITE1(ivsp->period);
@@ -705,7 +716,7 @@ void write_index(const Index* idx, IOWriter* f, int io_flags) {
 
         uint32_t h = fourcc(ivfpqr ? "IwQR" : "IwPQ");
         WRITE1(h);
-        write_ivf_header(ivpq, f);
+        write_ivf_header(ivpq, f, io_flags);
         WRITE1(ivpq->by_residual);
         WRITE1(ivpq->code_size);
         write_ProductQuantizer(&ivpq->pq, f);
@@ -720,14 +731,14 @@ void write_index(const Index* idx, IOWriter* f, int io_flags) {
                     dynamic_cast<const IndexIVFIndependentQuantizer*>(idx)) {
         uint32_t h = fourcc("IwIQ");
         WRITE1(h);
-        write_index_header(indep, f);
-        write_index(indep->quantizer, f);
+        write_index_header(indep, f, dedup_vector_enabled);
+        write_index(indep->quantizer, f, io_flags);
         bool has_vt = indep->vt != nullptr;
         WRITE1(has_vt);
         if (has_vt) {
             write_VectorTransform(indep->vt, f);
         }
-        write_index(indep->index_ivf, f);
+        write_index(indep->index_ivf, f, io_flags);
         if (auto index_ivfpq = dynamic_cast<IndexIVFPQ*>(indep->index_ivf)) {
             WRITE1(index_ivfpq->use_precomputed_table);
         }
@@ -736,27 +747,27 @@ void write_index(const Index* idx, IOWriter* f, int io_flags) {
                     dynamic_cast<const IndexPreTransform*>(idx)) {
         uint32_t h = fourcc("IxPT");
         WRITE1(h);
-        write_index_header(ixpt, f);
+        write_index_header(ixpt, f, dedup_vector_enabled);
         int nt = ixpt->chain.size();
         WRITE1(nt);
         for (int i = 0; i < nt; i++) {
             write_VectorTransform(ixpt->chain[i], f);
         }
-        write_index(ixpt->index, f);
+        write_index(ixpt->index, f, io_flags);
     } else if (
             const MultiIndexQuantizer* imiq =
                     dynamic_cast<const MultiIndexQuantizer*>(idx)) {
         uint32_t h = fourcc("Imiq");
         WRITE1(h);
-        write_index_header(imiq, f);
+        write_index_header(imiq, f, dedup_vector_enabled);
         write_ProductQuantizer(&imiq->pq, f);
     } else if (
             const IndexRefine* idxrf = dynamic_cast<const IndexRefine*>(idx)) {
         uint32_t h = fourcc("IxRF");
         WRITE1(h);
-        write_index_header(idxrf, f);
-        write_index(idxrf->base_index, f);
-        write_index(idxrf->refine_index, f);
+        write_index_header(idxrf, f, dedup_vector_enabled);
+        write_index(idxrf->base_index, f, io_flags);
+        write_index(idxrf->refine_index, f, io_flags);
         WRITE1(idxrf->k_factor);
     } else if (
             const IndexIDMap* idxmap = dynamic_cast<const IndexIDMap*>(idx)) {
@@ -764,8 +775,8 @@ void write_index(const Index* idx, IOWriter* f, int io_flags) {
                                                            : fourcc("IxMp");
         // no need to store additional info for IndexIDMap2
         WRITE1(h);
-        write_index_header(idxmap, f);
-        write_index(idxmap->index, f);
+        write_index_header(idxmap, f, dedup_vector_enabled);
+        write_index(idxmap->index, f, io_flags);
         WRITEVECTOR(idxmap->id_map);
     } else if (const IndexHNSW* idxhnsw = dynamic_cast<const IndexHNSW*>(idx)) {
         uint32_t h = dynamic_cast<const IndexHNSWFlat*>(idx) ? fourcc("IHNf")
@@ -776,7 +787,7 @@ void write_index(const Index* idx, IOWriter* f, int io_flags) {
                                                              : 0;
         FAISS_THROW_IF_NOT(h != 0);
         WRITE1(h);
-        write_index_header(idxhnsw, f);
+        write_index_header(idxhnsw, f, dedup_vector_enabled);
         if (h == fourcc("IHc2")) {
             WRITE1(idxhnsw->keep_max_size_level0);
             auto idx_hnsw_cagra = dynamic_cast<const IndexHNSWCagra*>(idxhnsw);
@@ -789,7 +800,7 @@ void write_index(const Index* idx, IOWriter* f, int io_flags) {
             uint32_t n4 = fourcc("null");
             WRITE1(n4);
         } else {
-            write_index(idxhnsw->storage, f);
+            write_index(idxhnsw->storage, f, io_flags);
         }
     } else if (const IndexNSG* idxnsg = dynamic_cast<const IndexNSG*>(idx)) {
         uint32_t h = dynamic_cast<const IndexNSGFlat*>(idx) ? fourcc("INSf")
@@ -798,7 +809,7 @@ void write_index(const Index* idx, IOWriter* f, int io_flags) {
                                                             : 0;
         FAISS_THROW_IF_NOT(h != 0);
         WRITE1(h);
-        write_index_header(idxnsg, f);
+        write_index_header(idxnsg, f, dedup_vector_enabled);
         WRITE1(idxnsg->GK);
         WRITE1(idxnsg->build_type);
         WRITE1(idxnsg->nndescent_S);
@@ -806,7 +817,7 @@ void write_index(const Index* idx, IOWriter* f, int io_flags) {
         WRITE1(idxnsg->nndescent_L);
         WRITE1(idxnsg->nndescent_iter);
         write_NSG(&idxnsg->nsg, f);
-        write_index(idxnsg->storage, f);
+        write_index(idxnsg->storage, f, io_flags);
     } else if (
             const IndexNNDescent* idxnnd =
                     dynamic_cast<const IndexNNDescent*>(idx)) {
@@ -815,15 +826,15 @@ void write_index(const Index* idx, IOWriter* f, int io_flags) {
         uint32_t h = fourcc("INNf");
         FAISS_THROW_IF_NOT(h != 0);
         WRITE1(h);
-        write_index_header(idxnnd, f);
+        write_index_header(idxnnd, f, dedup_vector_enabled);
         write_NNDescent(&idxnnd->nndescent, f);
-        write_index(idxnnd->storage, f);
+        write_index(idxnnd->storage, f, io_flags);
     } else if (
             const IndexPQFastScan* idxpqfs =
                     dynamic_cast<const IndexPQFastScan*>(idx)) {
         uint32_t h = fourcc("IPfs");
         WRITE1(h);
-        write_index_header(idxpqfs, f);
+        write_index_header(idxpqfs, f, dedup_vector_enabled);
         write_ProductQuantizer(&idxpqfs->pq, f);
         WRITE1(idxpqfs->implem);
         WRITE1(idxpqfs->bbs);
@@ -836,7 +847,7 @@ void write_index(const Index* idx, IOWriter* f, int io_flags) {
                     dynamic_cast<const IndexIVFPQFastScan*>(idx)) {
         uint32_t h = fourcc("IwPf");
         WRITE1(h);
-        write_ivf_header(ivpq_2, f);
+        write_ivf_header(ivpq_2, f, io_flags);
         WRITE1(ivpq_2->by_residual);
         WRITE1(ivpq_2->code_size);
         WRITE1(ivpq_2->bbs);
@@ -851,21 +862,21 @@ void write_index(const Index* idx, IOWriter* f, int io_flags) {
         // IndexRowwiseMinmaxFloat
         uint32_t h = fourcc("IRMf");
         WRITE1(h);
-        write_index_header(imm, f);
-        write_index(imm->index, f);
+        write_index_header(imm, f, dedup_vector_enabled);
+        write_index(imm->index, f, io_flags);
     } else if (
             const IndexRowwiseMinMaxFP16* imm_2 =
                     dynamic_cast<const IndexRowwiseMinMaxFP16*>(idx)) {
         // IndexRowwiseMinmaxHalf
         uint32_t h = fourcc("IRMh");
         WRITE1(h);
-        write_index_header(imm_2, f);
-        write_index(imm_2->index, f);
+        write_index_header(imm_2, f, dedup_vector_enabled);
+        write_index(imm_2->index, f, io_flags);
     } else if (
             const IndexRaBitQ* idxq = dynamic_cast<const IndexRaBitQ*>(idx)) {
         uint32_t h = fourcc("Ixrq");
         WRITE1(h);
-        write_index_header(idx, f);
+        write_index_header(idx, f, dedup_vector_enabled);
         write_RaBitQuantizer(&idxq->rabitq, f);
         WRITEVECTOR(idxq->codes);
         WRITEVECTOR(idxq->center);
@@ -875,7 +886,7 @@ void write_index(const Index* idx, IOWriter* f, int io_flags) {
                     dynamic_cast<const IndexIVFRaBitQ*>(idx)) {
         uint32_t h = fourcc("Iwrq");
         WRITE1(h);
-        write_ivf_header(ivrq, f);
+        write_ivf_header(ivrq, f, io_flags);
         write_RaBitQuantizer(&ivrq->rabitq, f);
         WRITE1(ivrq->code_size);
         WRITE1(ivrq->by_residual);
@@ -886,12 +897,12 @@ void write_index(const Index* idx, IOWriter* f, int io_flags) {
     }
 }
 
-void write_index(const Index* idx, FILE* f, int io_flags) {
+void write_index(const Index* idx, FILE* f, uint64_t io_flags) {
     FileIOWriter writer(f);
     write_index(idx, &writer, io_flags);
 }
 
-void write_index(const Index* idx, const char* fname, int io_flags) {
+void write_index(const Index* idx, const char* fname, uint64_t io_flags) {
     FileIOWriter writer(fname);
     write_index(idx, &writer, io_flags);
 }
@@ -1002,7 +1013,7 @@ void write_index_binary(const IndexBinary* idx, IOWriter* f) {
         uint32_t h = fourcc("IBFf");
         WRITE1(h);
         write_index_binary_header(idxff, f);
-        write_index(idxff->index, f);
+        write_index(idxff->index, f, 1ull<<63);
     } else if (
             const IndexBinaryHNSW* idxhnsw =
                     dynamic_cast<const IndexBinaryHNSW*>(idx)) {

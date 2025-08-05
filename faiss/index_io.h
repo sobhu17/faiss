@@ -35,10 +35,11 @@ struct InvertedLists;
 
 /// skip the storage for graph-based indexes
 const int IO_FLAG_SKIP_STORAGE = 1;
+const uint64_t DEDUPE_VECTORS_OPT_DISABLED = (1ull << 63);
 
-void write_index(const Index* idx, const char* fname, int io_flags = 0);
-void write_index(const Index* idx, FILE* f, int io_flags = 0);
-void write_index(const Index* idx, IOWriter* writer, int io_flags = 0);
+void write_index(const Index* idx, const char* fname, uint64_t io_flags = 0);
+void write_index(const Index* idx, FILE* f, uint64_t io_flags = 0);
+void write_index(const Index* idx, IOWriter* writer, uint64_t io_flags = 0);
 
 void write_index_binary(const IndexBinary* idx, const char* fname);
 void write_index_binary(const IndexBinary* idx, FILE* f);
@@ -67,13 +68,13 @@ const int IO_FLAG_MMAP = IO_FLAG_SKIP_IVF_DATA | 0x646f0000;
 //   after OnDiskInvertedLists get properly updated.
 const int IO_FLAG_MMAP_IFC = 1 << 9;
 
-Index* read_index(const char* fname, int io_flags = 0);
-Index* read_index(FILE* f, int io_flags = 0);
-Index* read_index(IOReader* reader, int io_flags = 0);
+Index* read_index(const char* fname, uint64_t io_flags = 0);
+Index* read_index(FILE* f, uint64_t io_flags = 0);
+Index* read_index(IOReader* reader, uint64_t io_flags = 0);
 
-IndexBinary* read_index_binary(const char* fname, int io_flags = 0);
-IndexBinary* read_index_binary(FILE* f, int io_flags = 0);
-IndexBinary* read_index_binary(IOReader* reader, int io_flags = 0);
+IndexBinary* read_index_binary(const char* fname, uint64_t io_flags = 0);
+IndexBinary* read_index_binary(FILE* f, uint64_t io_flags = 0);
+IndexBinary* read_index_binary(IOReader* reader, uint64_t io_flags = 0);
 
 void write_VectorTransform(const VectorTransform* vt, const char* fname);
 void write_VectorTransform(const VectorTransform* vt, IOWriter* f);
@@ -88,7 +89,7 @@ void write_ProductQuantizer(const ProductQuantizer* pq, const char* fname);
 void write_ProductQuantizer(const ProductQuantizer* pq, IOWriter* f);
 
 void write_InvertedLists(const InvertedLists* ils, IOWriter* f);
-InvertedLists* read_InvertedLists(IOReader* reader, int io_flags = 0);
+InvertedLists* read_InvertedLists(IOReader* reader, uint64_t io_flags = 0);
 
 } // namespace faiss
 

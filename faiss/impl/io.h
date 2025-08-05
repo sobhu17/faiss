@@ -34,6 +34,11 @@ struct IOReader {
     // return a file number that can be memory-mapped
     virtual int filedescriptor();
 
+    // New method to stream full-precision vectors
+    virtual bool copy(void* dest, int expectedByteSize, bool isFloat) {
+        return false; // default fallback
+    }
+
     virtual ~IOReader() {}
 };
 

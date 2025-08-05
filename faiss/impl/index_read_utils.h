@@ -19,13 +19,14 @@ namespace faiss {
 struct ProductQuantizer;
 struct ScalarQuantizer;
 
-void read_index_header(Index* idx, IOReader* f);
+bool read_index_header(Index* idx, IOReader* f);
 void read_direct_map(DirectMap* dm, IOReader* f);
 void read_ivf_header(
         IndexIVF* ivf,
         IOReader* f,
+        uint64_t io_flags,
         std::vector<std::vector<idx_t>>* ids = nullptr);
-void read_InvertedLists(IndexIVF* ivf, IOReader* f, int io_flags);
+void read_InvertedLists(IndexIVF* ivf, IOReader* f, uint64_t io_flags);
 ArrayInvertedLists* set_array_invlist(
         IndexIVF* ivf,
         std::vector<std::vector<idx_t>>& ids);
